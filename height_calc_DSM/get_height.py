@@ -15,6 +15,7 @@ import sys
 import logging
 import shutil
 import subprocess
+import numpy as np
 #where the tiles are located
 import shadowFunctions as sf
 from TIF_files import TIF_files as TIF_files
@@ -96,26 +97,15 @@ def setup_logger(logFile,outScreen=False):
 
 
 def main(args):
-    stretchlist=args.stretch_list #${1-stretchlist_utm.csv}
-    cfile=args.config_file
-    shpars=sf.read_conf(cfile)
+    stretchlist=args.stretch_list
     tilesDir=TILESDIR
     #The output will be written in this directory
     out_dir="processing_tiles"
     src_dir="." #where the scripts are
-
-    resolution=shpars['resolution']
-    horizonstep=shpars['horizonstep']
-    tileside=shpars['tileside']
-    maxdistance=shpars['maxdistance']
-    mindist=shpars['mindist']
-    mintiles=shpars['mintiles']
-
     #This is the directory where I will copy and unpack the zip files:
     tilesdir=os.path.join(out_dir)
     now=datetime.strftime(datetime.now(),'%Y%m%d_%H%M%S')
     print("Starting on %s"%now)
-    print("Processing stretch  %s"%stretchlist)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
     else:
@@ -130,25 +120,24 @@ def main(args):
         stretch_data = sf.read_stretch(stretchlist)
     elif args.station != None:
         stretch_data = sf.read_station(args.station)
-
-    if stretch_data.empty:
-        print("Station list %s empty!"%strechlist)
-        print("Stopping height calculation for this list")
-        sys.exit()
-    print("before tiles list")
-    tiles_list = sf.calc_tiles(stretch_data)
-    tif_files=sf.read_tif_list(os.path.join(src_dir,'list_of_tif_files.txt'))
-    tiles_needed = sf.loop_tilelist(tiles_list,tif_files,tilesdir)
-    #this_tile = tiles_needed["station_tile"]
-    #I want only the tile containing the station
-    this_tile= tiles_needed[tiles_needed["station_tile"] == tiles_needed["surrounding_tile"]]
-
     #locate the files I need
     import json
     with open(ZIPDATA,"r") as f:
         zipcontents = json.load(f)
     avail_tifs=TIF_files(zipcontents)
-            #zipfiles='zip_files_list.txt',zipdir='list_zip_contents',outdir=out_dir)
+
+    if stretch_data.empty:
+        print("Station list %s empty!"%strechlist)
+        print("Stopping height calculation for this list")
+        sys.exit()
+
+    tiles_list = sf.calc_tiles(stretch_data)
+    tif_files = np.array(avail_tifs.tiflist)
+    tiles_needed = sf.loop_tilelist(tiles_list,tif_files,tilesdir)
+    #this_tile = tiles_needed["station_tile"]
+    #I want only the tile containing the station
+    this_tile= tiles_needed[tiles_needed["station_tile"] == tiles_needed["surrounding_tile"]]
+
     lookup_tifs = [this_tile["tif_file"].values[0].split("/")[-1]]
     zipfile=avail_tifs.find_zipfiles(lookup_tifs)
     #the original function expects a list of files, but here I only need one
@@ -165,20 +154,10 @@ def main(args):
     print(f"Removing {out_dir}")
     #shutil.rmtree(out_dir)
 
-    #sf.call_grass("set_resolution",shpars)
-    #SHADOW CALCULATION
-    #sf.calc_shadows(stretch_data,tiles_needed,shpars,out_dir,shpars)
-    #logger.info("Shadow calculation done")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='''If no argument provided it will take the default config file
-             Example usage: ./calculateShadows.py -c shadows_conf.ini''', formatter_class=RawTextHelpFormatter)
-
-    parser.add_argument('-c','--config_file',
-           metavar='config file to be read',
-           type=str,
-           default='./shadows_conf.ini',
-           required=False)
+    parser = argparse.ArgumentParser(description='''
+             Example usage: ./get_height.py -sl coords_utm.csv''', formatter_class=RawTextHelpFormatter)
 
     parser.add_argument('-sl','--stretch_list',
            metavar='list of stations to be processed',
