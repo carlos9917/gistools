@@ -1,6 +1,7 @@
 '''
-Python version of the calculateShadows.sh bash script
-originally used to call Grass
+Quick and dirty height calculation based on the scripts
+I am using for the shadow calculations
+It expects to use the danish surface model 
 '''
 import sqlite3
 from datetime import datetime
@@ -16,9 +17,10 @@ import shutil
 import subprocess
 #where the tiles are located
 import shadowFunctions as sf
-from search_zipfiles_nounzip import TIF_files as TIF_files
+from TIF_files import TIF_files as TIF_files
 
 TILESDIR="/data/users/cap/DSM_DK"
+ZIPDATA="zip_contents.json"
 def get_zipfile(filepath,localpath):
     """
     filepath
@@ -142,7 +144,11 @@ def main(args):
     this_tile= tiles_needed[tiles_needed["station_tile"] == tiles_needed["surrounding_tile"]]
 
     #locate the files I need
-    avail_tifs=TIF_files(zipfiles='zip_files_list.txt',zipdir='list_zip_contents',outdir=out_dir)
+    import json
+    with open(ZIPDATA,"r") as f:
+        zipcontents = json.load(f)
+    avail_tifs=TIF_files(zipcontents)
+            #zipfiles='zip_files_list.txt',zipdir='list_zip_contents',outdir=out_dir)
     lookup_tifs = [this_tile["tif_file"].values[0].split("/")[-1]]
     zipfile=avail_tifs.find_zipfiles(lookup_tifs)
     #the original function expects a list of files, but here I only need one
