@@ -18,7 +18,7 @@ import subprocess
 import numpy as np
 import shutil
 #where the tiles are located
-import shadowFunctions as sf
+import helperFunctions as sf
 from TIF_files import TIF_files as TIF_files
 
 TILESDIR="/data/users/cap/DSM_DK"
@@ -161,7 +161,6 @@ def main(args):
         delete_files = [os.path.join(out_dir,f) for f in os.listdir(out_dir)]
         for f in delete_files:
             os.remove(f)
-            print(f)
         #shutil.rmtree(out_dir)
     os.rmdir(out_dir)
     df_write = pd.DataFrame(allData)
