@@ -16,6 +16,7 @@ import logging
 import shutil
 import subprocess
 import numpy as np
+import shutil
 #where the tiles are located
 import shadowFunctions as sf
 from TIF_files import TIF_files as TIF_files
@@ -50,7 +51,7 @@ def unzip_file(zip_file,tif_file,dest):
         except subprocess.CalledProcessError as err:
             print(f"Error unzipping {zip_file} to {dest}: {err}")
 
-def get_height(coords,elevation):
+def get_height(coords,elevation) -> float:
     import rasterio
     #coords = ((147.363,-36.419), (147.361,-36.430))
     #elevation = 'srtm_66_20.tif'
@@ -59,14 +60,7 @@ def get_height(coords,elevation):
         dem_data = src.read(1).astype('float64')
         height = dem_data[row,col]
         print(f"Height for this station: {height}")
-        #print(dem_band[east,north])
-        #vals = src.sample(coords)
-        #for val in vals:
-        #    print(val)
-        #    #print(val[0]) #val is an array of values, 1 element 
-        #                  #per band. src is a single band raster 
-        #                  #so we only need val[0]
-    
+        return height
 
 #logger = logging.getLogger(__name__)
 def setup_logger(logFile,outScreen=False):
@@ -134,28 +128,44 @@ def main(args):
     tiles_list = sf.calc_tiles(stretch_data)
     tif_files = np.array(avail_tifs.tiflist)
     tiles_needed = sf.loop_tilelist(tiles_list,tif_files,tilesdir)
-    #this_tile = tiles_needed["station_tile"]
     #I want only the tile containing the station
-    this_tile= tiles_needed[tiles_needed["station_tile"] == tiles_needed["surrounding_tile"]]
+    tiles_selected= tiles_needed[tiles_needed["station_tile"] == tiles_needed["surrounding_tile"]]
     #TODO: if the stretch list is more than one station 
-    # do a loop here where this_tile is one of each in the list above
+    # do a loop here where tiles_selected is one of each in the list above
+    allData=OrderedDict()
+    for label in ["station","height"]:
+        allData[label] = []
+    for k in range(len(tiles_selected)):
+        this_tile=tiles_selected.iloc[k]
+        #lookup_tifs = [this_tile["tif_file"].values[0].split("/")[-1]]
+        lookup_tifs = [this_tile["tif_file"].split("/")[-1]]
+        zipfile = avail_tifs.find_zipfiles(lookup_tifs)
+        #the original function expects a list of files, but here I only need one
+        zipfile = "".join(zipfile)
+        localfile = os.path.join(TILESDIR,zipfile)
+        get_zipfile(localfile,out_dir)
+        #unzip_file(zipfile,this_tile["tif_file"].values[0],out_dir)
+        #elevation = this_tile["tif_file"].values[0]
+        unzip_file(zipfile,this_tile["tif_file"],out_dir)
+        elevation = this_tile["tif_file"]
+        coords = (float(this_tile.coords.split("|")[0]),
+                  float(this_tile.coords.split("|")[1]))
 
-    lookup_tifs = [this_tile["tif_file"].values[0].split("/")[-1]]
-    zipfile=avail_tifs.find_zipfiles(lookup_tifs)
-    #the original function expects a list of files, but here I only need one
-    zipfile = "".join(zipfile)
-    localfile=os.path.join(TILESDIR,zipfile)
-    get_zipfile(localfile,out_dir)
-    unzip_file(zipfile,this_tile["tif_file"].values[0],out_dir)
-    elevation = this_tile["tif_file"].values[0]
-    coords=(float(this_tile.coords.values[0].split("|")[0]),
-           float(this_tile.coords.values[0].split("|")[1]))
-    get_height(coords,elevation)
-    #Clean up
-    import shutil
-    print(f"Removing {out_dir}")
-    #shutil.rmtree(out_dir)
-
+        stdata= this_tile.coords.split("|")
+        station_id = stdata[3]+stdata[2].zfill(2)+stdata[4].zfill(2)
+        height = get_height(coords,elevation)
+        allData["station"].append(station_id)
+        allData["height"].append(height)
+        #Clean up
+        print(f"Removing all files in {out_dir}")
+        delete_files = [os.path.join(out_dir,f) for f in os.listdir(out_dir)]
+        for f in delete_files:
+            os.remove(f)
+            print(f)
+        #shutil.rmtree(out_dir)
+    os.rmdir(out_dir)
+    df_write = pd.DataFrame(allData)
+    df_write.to_csv("all_heights.csv",index=False)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='''
