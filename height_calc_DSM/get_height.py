@@ -137,6 +137,8 @@ def main(args):
     #this_tile = tiles_needed["station_tile"]
     #I want only the tile containing the station
     this_tile= tiles_needed[tiles_needed["station_tile"] == tiles_needed["surrounding_tile"]]
+    #TODO: if the stretch list is more than one station 
+    # do a loop here where this_tile is one of each in the list above
 
     lookup_tifs = [this_tile["tif_file"].values[0].split("/")[-1]]
     zipfile=avail_tifs.find_zipfiles(lookup_tifs)

@@ -123,10 +123,8 @@ def calc_tiles(stretchlist):
                 tiles_list_long[stretch_tile+"_"+st_info] = []
         print(f"Inserting {insert} into {stretch_tile}")       
         tiles_list[stretch_tile].append(insert)
-        tiles_list_long[stretch_tile+"_"+st_info].append(insert)
     print("List before passing over dict")
     print(tiles_list)
-    #print(tiles_list_long)
     return tiles_list
 
 def read_tif_list(tfile):
