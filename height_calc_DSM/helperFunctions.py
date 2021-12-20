@@ -178,7 +178,6 @@ def loop_tilelist(list_tiles, tif_files,tif_dir):
     #Make a dataframe containing arrays: ctiles_list, tiles_list, files_list, coords_list
     data = pd.DataFrame({'station_tile':ctiles_list,'surrounding_tile':tiles_list,
         'tif_file':files_list,'coords':coords_list})
-    print("loop_tilelist: before passing data to be used by calc_shadows")
-    print(data)
+    #print("loop_tilelist: before passing data to be used by calc_shadows")
+    #print(data)
     return data
-    #return tiles, files

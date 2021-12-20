@@ -23,6 +23,10 @@ from TIF_files import TIF_files as TIF_files
 
 TILESDIR="/data/users/cap/DSM_DK"
 ZIPDATA="zip_contents.json"
+def write_station(height,station,ofile):
+    with open(ofile,"a+") as f:
+        f.write(f"{height} {station}\n")
+
 def get_zipfile(filepath,localpath):
     """
     filepath
@@ -130,6 +134,10 @@ def main(args):
     tiles_needed = sf.loop_tilelist(tiles_list,tif_files,tilesdir)
     #I want only the tile containing the station
     tiles_selected= tiles_needed[tiles_needed["station_tile"] == tiles_needed["surrounding_tile"]]
+    if tiles_selected.empty:
+        print("No tiles found for station(s) provided!")
+        sys.exit(1)
+
     #TODO: if the stretch list is more than one station 
     # do a loop here where tiles_selected is one of each in the list above
     allData=OrderedDict()
@@ -156,6 +164,7 @@ def main(args):
         height = get_height(coords,elevation)
         allData["station"].append(station_id)
         allData["height"].append(height)
+        write_station(height,station_id,"processed_stations.txt")
         #Clean up
         print(f"Removing all files in {out_dir}")
         delete_files = [os.path.join(out_dir,f) for f in os.listdir(out_dir)]
