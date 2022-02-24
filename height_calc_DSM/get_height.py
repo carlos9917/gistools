@@ -96,6 +96,7 @@ def setup_logger(logFile,outScreen=False):
 
 def main(args):
     stretchlist=args.stretch_list
+    outfile = args.outfile
     tilesDir=TILESDIR
     #The output will be written in this directory
     out_dir="processing_tiles"
@@ -114,6 +115,7 @@ def main(args):
     #PRE-PROCESSING
     if os.path.isfile(args.stretch_list):
         print(f"Using list of stations {args.stretch_list}")
+        if not "utm" in args.stretch_list: print(f"WARNING: File must contain UTM coordinates!")
         logger.info("Reading data from %s"%stretchlist)    
         stretch_data = sf.read_stretch(stretchlist)
     elif args.station != None:
@@ -173,7 +175,7 @@ def main(args):
         #shutil.rmtree(out_dir)
     os.rmdir(out_dir)
     df_write = pd.DataFrame(allData)
-    df_write.to_csv("all_heights.csv",index=False)
+    df_write.to_csv(outfile,index=False)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='''
@@ -190,6 +192,12 @@ if __name__ == '__main__':
            type=str,
            default=None,
            required=False)
+
+    parser.add_argument('-out','--outfile',
+           metavar='Output file (ie, all_heights.csv)',
+           type=str,
+           default=None,
+           required=True)
 
     parser.add_argument('-lg','--log_file',metavar='Log file name',
                                 type=str, default='heights.log', required=False)
