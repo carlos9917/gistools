@@ -23,11 +23,10 @@ logger = logging.getLogger(__name__)
 def read_station(station_details) -> pd.DataFrame:
     """
     Create dataframe for station with details provided
-    station_details is a string with name, easting and northing
+    station_details is a string with name, sensor1, sensor2,easting and northing
     separated by commas
     """
-    data = pd.DataFrame()
-    data.columns=['easting','norting','station','county','roadsection']
+    data = pd.DataFrame(columns=['easting','norting','station','county','roadsection'])
     station = station_details.split(",")[0]
     east = station_details.split(",")[1]
     nort = station_details.split(",")[2]

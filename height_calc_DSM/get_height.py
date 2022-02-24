@@ -188,7 +188,7 @@ if __name__ == '__main__':
            required=False)
 
     parser.add_argument('-st','--station',
-           metavar='Station name and coordinates, separated by commas (ie, Skagen, lat,lon)',
+           metavar='Station name and UTM coordinates, separated by commas (ie, 3011,519379.289172,6123006.457084)',
            type=str,
            default=None,
            required=False)
