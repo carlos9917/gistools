@@ -112,10 +112,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.coords != None:
         coords = args.coords.split(",")
-        print(f"Using coordinates {coords}")
+        print(f"Using lat,lon coordinates {coords}")
         lat,lon = coords[0],coords[1]
         east,nort=latlon2utm(lat,lon)
-        print(str(east)+" "+str(nort))
+        #print(str(east)+" "+str(nort))
+        print(f"Easting and Norting: {east}, {nort}")
     elif args.ifile != None:    
         ifile = args.ifile
         input_format = args.input_format
