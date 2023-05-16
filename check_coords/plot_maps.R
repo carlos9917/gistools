@@ -22,11 +22,12 @@ locations <- data.frame(out)
 world_map <- map_data("world")[map_data("world")$region=="Denmark",] # Create a plot
 
 
-
 # Create a plot
 map_plot <- ggplot() +
   geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = "lightblue") +
-  geom_point(data = locations, aes(x = lon, y = lat), size = 3) +
+  geom_point(data = locations, aes(x = lon, y = lat), size = 3) + #+geom_text(hjust=0, vjust=0)+
+  geom_label(data=locations,aes(label = station,x=lon,y=lat)) + #note: this goes over the points! Need to make filling none?
+  
   
   #geom_point(data = locations, aes(x = lon, y = lat, color = station), size = 3) +
   theme_void() +
@@ -35,5 +36,6 @@ map_plot <- ggplot() +
 # Display the plot
 print(map_plot)
 
+ggsave("plot.pdf")
 
 

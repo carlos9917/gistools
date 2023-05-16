@@ -58,13 +58,6 @@ if __name__=="__main__":
     args = parser.parse_args()
     polygon = read_polygon(args.poly)
 
-    #if "," in args.coords:
-    #    lon,lat = args.coords.split(",")
-    #    if check_coord(float(lon),float(lat),polygon):
-    #        print(f"{lon},{lat} coordinates ok")
-    #    else:    
-    #        print(f"{lon},{lat} outside the border defined by {args.poly}!")
-    #elif "," not in args.coords:
     if args.stations is not None:
         coords = read_coords_list(args.stations)
         save_list=[]
@@ -85,5 +78,5 @@ if __name__=="__main__":
         df_save.to_sql(name="stations_dk",con=conn)
         conn.close()
     else:
-        print("Please provide lon and lat separated by comma")
+        print("Please provide file with the stations")
         sys.exit(1)
