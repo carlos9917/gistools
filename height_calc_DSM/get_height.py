@@ -22,6 +22,7 @@ import helperFunctions as sf
 from TIF_files import TIF_files as TIF_files
 
 TILESDIR="/data/users/cap/DSM_DK"
+TILESDIR="/data/projects/glatmodel/DSM_DK"
 ZIPDATA="zip_contents.json"
 def write_station(height,station,ofile):
     with open(ofile,"a+") as f:
