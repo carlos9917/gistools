@@ -64,7 +64,7 @@ def get_height(coords,elevation) -> float:
         row, col = src.index(coords[0], coords[1])
         dem_data = src.read(1).astype('float64')
         height = dem_data[row,col]
-        print(f"Height for this station: {height}")
+        print(f"Local height for the station with coordinates {coords}: {height}")
         return height
 
 #logger = logging.getLogger(__name__)

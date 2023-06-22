@@ -4,10 +4,16 @@ PY=/data/users/cap/miniconda3/envs/py38/bin/python
 
 eval "$(/data/users/cap/miniconda3/bin/conda shell.bash hook)"
 conda activate py38
-i=0
-for ST in $(awk -F "|" '{print $3","$1","$2}' ../latlon_UTM/vejvejr_stations_utm.csv); do
+i=137
+#for ST in $(awk -v count=$i -F "|" 'NR%10==0 {print $3","$1","$2}' ../latlon_UTM/vejvejr_stations_utm.csv > tmp_list_${i}.csv); do
+CSV=vejvejr_stations_utm.csv
+#split files
+#split -d -a 4 -l 10 $CSV vv --additional-suffix ".csv"
+for F in vv*.csv; do
+echo "Doing file $i: $F"
+#python ./get_height.py -st $ST -out nh_$i.csv
+python ./get_height.py -sl $F -out nh_$i.csv
 let i++
-python ./get_height.py -st $ST -out nh_$i.csv
 done
 
 #python ./get_height.py -sl $1 -out vejvejr_all_heights.csv  #station_data_test_utm.csv 

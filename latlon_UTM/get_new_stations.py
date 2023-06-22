@@ -35,4 +35,5 @@ output="vejvejr_stations.csv"
 #df["name"] = '"' + df["name"].astype(str) + '"'
 df['name'].apply(lambda x: '"' +x+ '"')
 df[["SID","name","lon","lat"]].to_csv(output,index=False,sep=",",header=None)
+df[["SID","lon","lat"]].to_csv(output,index=False,sep=",",header=None)
 

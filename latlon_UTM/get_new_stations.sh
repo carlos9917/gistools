@@ -4,5 +4,5 @@
 eval "$(/data/users/cap/miniconda3/bin/conda shell.bash hook)"
 conda activate py38
 ./get_new_stations.py
-rm out
-rm out2
+#rm out
+#rm out2
