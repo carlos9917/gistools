@@ -10,16 +10,20 @@ jupyter: python3
 ## Motivation
 
 This document presents a preliminary exploratory data analysis
-of the effect of the new road stations on the performance of the *glatmodel*
+of the effect of the new road stations on the performance of the *glatmodel*.
+Initially we focus only on displaying the distribution of the
+stations in time.
 
 ## Procedure
 
 Observational and forecast data for road temperature (TROAD) is stored in sqlite tables generated
 for the harp package.
-There are currently X stations in the database
+There are currently 993 stations in the database.
 
 
-First we read the 
+First we have a brief look at the stations, using a shape file
+generated previously (zoom in to see the map).
+
 ```{python}
 import warnings
 warnings.filterwarnings('ignore')
@@ -50,7 +54,9 @@ stations_vv.crs = {'init': 'EPSG:4326'}
 points_njl = gpd.sjoin(stations_vv, df_njl, op = 'within')
 points_njl
 ```
-After selecting all stations falling inside the North Jutland domain we are left only with
+After selecting all stations falling inside the North Jutland domain we are left only with the stations shown below (zoom in
+to map).
+
 ```{python}
 
 m = fl.Map(zoom_start=100, layers_control=True, tiles="OpenStreetMap")
@@ -64,7 +70,7 @@ m
 ```
 
 Now checking the whole data set. Reading the stations database, observational data
-and forecast data
+and forecast data.
 
 ```{python}
 # read the data with the lat lon information
