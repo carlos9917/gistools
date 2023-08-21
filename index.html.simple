@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> Random plots </title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+<h2> Stations evaluation </h2>
+<p><a href="visualization/data_distribution.html">New stations</a></p>
+
+
+<!--
+
+<h2> Benchmark plots </h2>
+<p><a href="benchmark_tables.html">Benchmark tables</a></p>
+<p><a href="benchmark_plots.html">Benchmark SP/DP comparison</a></p>
+-->
+    
+
+</body>
+</html>

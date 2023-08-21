@@ -1,0 +1,310 @@
+---
+title: "Evaluating the benefit of adding more road stations"
+format: 
+  html:
+    embed-resources: true
+    page-layout: full
+author: "Carlos Peralta"
+date: "25 July 2023"
+jupyter: python3
+resource-path: ["/home/cap/Downloads/ROAD_MODEL_DATA"]
+
+---
+
+## Introduction
+
+This document presents an analysis of the benefits of adding
+new road stations to the already dense network of road stations in Denmark
+and how this affects the performance of the *glatmodel*.
+The focus of the analysis is on selecting a few key areas
+of the country where there has been a reasonably large increase in the number of stations (ie, at least 10 new stations).
+
+## Procedure
+
+Observational and forecast data for road temperature (TROAD) is stored in sqlite tables generated
+for the harp package.
+There are currently  stations in the database.
+
+
+
+```{python}
+import os
+import sqlite3
+
+import geopandas as gpd
+import folium as fl
+import pandas as pd
+from collections import OrderedDict
+from datetime import datetime
+from rich import print
+from matplotlib import pyplot as plt
+```
+
+Read different polygons to use them later to select stations from the forecast and observations
+```{python}
+fyn_pol = gpd.read_file("polygons/around_fyn.geojson")
+nwz_pol = gpd.read_file("polygons/around_nw_zealand.geojson")
+mju_pol = gpd.read_file("polygons/somewhere_midjutland.geojson")
+```
+
+Select math with all stations in the selected regions
+```{python}
+all_stations = gpd.read_file("all_vejvejr_stations_2023.shp")
+stations = OrderedDict()
+stations["fyn"] = gpd.sjoin(all_stations,fyn_pol,predicate="within")
+stations["mju"] = gpd.sjoin(all_stations,mju_pol,predicate="within")
+stations["nwz"] = gpd.sjoin(all_stations,nwz_pol,predicate="within")
+```
+We will be using the cycles below to read the forecast data from the glatmodel
+for the indicated month and year.
+
+```{python}
+cycles= [str(i).zfill(2) for i in range(25)]
+cycles=["21","22","23","01","02","03"]
+DATA="/home/cap/Downloads/ROAD_MODEL_DATA"
+```
+Helper function to read the data from the sqlite files
+generated for harp.
+
+
+```{python}
+def read_sqlite(dbase:str, table:str) -> pd.DataFrame:
+    con=sqlite3.connect(dbase)
+    com=f"SELECT * FROM {table}"
+    df = pd.read_sql(com,con)
+    con.close()
+    df["datetime"] = pd.to_datetime(df["validdate"],unit="s")
+    if table == "FC":
+        df["fcstdatetime"] = pd.to_datetime(df["fcdate"],unit="s")
+    # the station list I get above only identifies the first 4 digits (ie, station but not sensor)
+    # add this information below as a new column
+    df["SID_partial"] = [int(str(sid)[0:4]) for sid in df.SID]
+    
+    gpd_df = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.lon, df.lat), crs="EPSG:4326")
+    return gpd_df
+```
+
+Read the forecast data for the selected cycles and all the observational data.
+```{python}
+YYYY="2022"
+MM="03"
+fcst_data=OrderedDict()
+for cycle in cycles:
+    fname=os.path.join(DATA,"FCTABLE_DATA",f"FCTABLE_TROAD_{YYYY}{MM}_{cycle}.sqlite")
+    print(f"Reading {fname}")
+    fcst_data[cycle] = read_sqlite(fname,"FC")
+    
+obs_data = read_sqlite(os.path.join(DATA,f"OBSTABLE_TROAD_{YYYY}.sqlite"),"SYNOP")
+```
+
+Select only a subset for each domain.
+Note this is selecting ALL stations inside the corresponding polygon, irrespective
+of creation date.
+
+```{python}
+fcst_sel = OrderedDict()
+obs_sel = OrderedDict()
+for key in stations.keys():
+    st_group = stations[key]["SID"].to_list()
+    obs_sel[key] = obs_data[obs_data["SID_partial"].isin(st_group)]
+    for cycle in cycles:
+        fcst_sel[key+"_"+cycle] = fcst_data[cycle][fcst_data[cycle]["SID_partial"].isin(st_group)]
+
+```
+
+ 
+![Regions to study, indicating polygons over Fyn (fyn), mid Jutland (mju) and somewhere north-west of Zealand (nwz)](regions_to_study_new_stations.png)
+
+There was an increase on the number of  stations on Fyn on Jan 2022
+and on the other two regions in January 2023
+
+![Increase of number of stations on Fyn on January 2022](stations_fyn_increase_202203.png)
+![Increase of number of stations on Jutland on January 2023](stations_mju_increase_202301.png)
+![Increase of number of stations on Zealand on January 2023](stations_nwz_increase_202301.png)
+
+Below we select a few example dates, based on the increase of stations availability,
+and plot the corresponding distributions. 
+We start with etsations in Fyn.
+Select the forecast data for the given date and the first 6 hours of the the forecast for a given cycle (in this case 21).
+We check first the day before the increase in station data: 20220302
+
+```{python}
+sel_date = datetime(2022,3,2)
+pol_hour = "fyn_21"
+plt_fcst = OrderedDict()
+for leadtime in range(1,7):
+    plt_fcst[leadtime] = fcst_sel[pol_hour][(fcst_sel[pol_hour]["fcstdatetime"] == sel_date)&(fcst_sel[pol_hour]["leadtime"] == leadtime)]
+```
+
+The data is selected separately for each leadtime:
+```{python}
+sum=plt_fcst[1][["fcstdatetime","leadtime","glatmodel_det"]].to_string(index=False)
+print(sum)
+sum=plt_fcst[2][["fcstdatetime","leadtime","glatmodel_det"]].to_string(index=False)
+print(sum)
+```
+
+Now select the corresponding data for the observations. Repeating for each, but this should not change.
+
+```{python}
+pol_name="fyn"
+plt_obs = OrderedDict()
+for leadtime in range(1,7):
+     sel_dates = plt_fcst[leadtime]["datetime"].to_list()
+     plt_obs[leadtime] = obs_sel[pol_name][obs_sel[pol_name]["datetime"].isin(sel_dates)]
+```
+
+Plot them one after the other, for each leadtime together with the observations.
+
+```{python}
+date_str = datetime.strftime(datetime(2022,3,2),"%Y-%m-%d")
+stds=[] 
+means=[]
+fig = plt.figure(layout="constrained",figsize=(10,6))
+fig.suptitle(f'Evolution of the distribution of forecast observations on {date_str} for cycle 21', fontsize=16)
+mosaic=[["1","2","3"],["4","5","6"]]
+ax_dict=fig.subplot_mosaic(mosaic)
+for key in plt_fcst.keys():
+    stds.append(plt_fcst[key]["glatmodel_det"].std())
+    means.append(plt_fcst[key]["glatmodel_det"].mean())
+    p1=plt_fcst[key]["glatmodel_det"].plot.density(legend=key,ax = ax_dict[str(key)])#.subplot_mosaic()
+    plt_obs[key]["TROAD"].plot.density(legend=key,ax = ax_dict[str(key)])
+    p1.legend([f"hour {key}", "obs"])    
+#plt.xlim([-4,4])
+```
+
+Now we check first the day when the data increased: 20220303, same cycle
+```{python}
+sel_date = datetime(2022,3,3)
+pol_hour = "fyn_21"
+plt_fcst = OrderedDict()
+for leadtime in range(1,7):
+    plt_fcst[leadtime] = fcst_sel[pol_hour][(fcst_sel[pol_hour]["fcstdatetime"] == sel_date)&(fcst_sel[pol_hour]["leadtime"] == leadtime)]
+pol_name="fyn"
+plt_obs = OrderedDict()
+for leadtime in range(1,7):
+     sel_dates = plt_fcst[leadtime]["datetime"].to_list()
+     plt_obs[leadtime] = obs_sel[pol_name][obs_sel[pol_name]["datetime"].isin(sel_dates)]
+```
+
+Plot now the same distributions for the day after.
+
+```{python}
+stds=[] 
+means=[]
+fig = plt.figure(layout="constrained",figsize=(10,6))
+date_str = datetime.strftime(sel_date,"%Y-%m-%d")
+fig.suptitle('Evolution of the distribution of forecast observations on {date_str} for cycle 21', fontsize=16)
+mosaic=[["1","2","3"],["4","5","6"]]
+ax_dict=fig.subplot_mosaic(mosaic)
+for key in plt_fcst.keys():
+    stds.append(plt_fcst[key]["glatmodel_det"].std())
+    means.append(plt_fcst[key]["glatmodel_det"].mean())
+    p1=plt_fcst[key]["glatmodel_det"].plot.density(legend=key,ax = ax_dict[str(key)])#.subplot_mosaic()
+    plt_obs[key]["TROAD"].plot.density(legend=key,ax = ax_dict[str(key)])
+    p1.legend([f"hour {key}", "obs"])    
+stats=pd.DataFrame({"leadtime":[1,2,3,4,5,6],"std":stds,"mean":means})
+print("Means and standard deviations")
+print(stats[["leadtime","mean","std"]])
+```
+
+Creating a function to repeat this process:
+```{python}
+def set_plots(sel_date,pol_hour,pol_name):
+    plt_fcst = OrderedDict()
+    for leadtime in range(1,7):
+        plt_fcst[leadtime] = fcst_sel[pol_hour][(fcst_sel[pol_hour]["fcstdatetime"] == sel_date)&(fcst_sel[pol_hour]["leadtime"] == leadtime)]
+    plt_obs = OrderedDict()
+    for leadtime in range(1,7):
+         sel_dates = plt_fcst[leadtime]["datetime"].to_list()
+         plt_obs[leadtime] = obs_sel[pol_name][obs_sel[pol_name]["datetime"].isin(sel_dates)]
+    return plt_fcst,plt_obs
+
+def plot_dist(plt_fcst,plt_obs,sel_date,cycle):
+    stds=[] 
+    means=[]
+    fig = plt.figure(layout="constrained",figsize=(10,6))
+    date_str = datetime.strftime(sel_date,"%Y-%m-%d")
+    fig.suptitle(f'Evolution of the distribution of forecast observations on {date_str} for cycle {cycle}', fontsize=16)
+    mosaic=[["1","2","3"],["4","5","6"]]
+    ax_dict=fig.subplot_mosaic(mosaic)
+    for key in plt_fcst.keys():
+        stds.append(plt_fcst[key]["glatmodel_det"].std())
+        means.append(plt_fcst[key]["glatmodel_det"].mean())
+        p1=plt_fcst[key]["glatmodel_det"].plot.density(legend=key,ax = ax_dict[str(key)])#.subplot_mosaic()
+        plt_obs[key]["TROAD"].plot.density(legend=key,ax = ax_dict[str(key)])
+        p1.legend([f"hour {key}", "obs"])    
+    stats=pd.DataFrame({"leadtime":[1,2,3,4,5,6],"std":stds,"mean":means})
+    return stats
+```
+
+Selecting all the other cycles
+
+```{python}
+date_before=datetime(2022,3,2)
+date_after=datetime(2022,3,3)
+pol_name="fyn"
+```
+Plotting for cycle 22, day before and day after.
+
+```{python}
+
+pol_hour="fyn_22"
+cycle=pol_hour.split("_")[1]
+plt_fcst,plt_obs = set_plots(date_before,pol_hour,pol_name)
+stats = plot_dist(plt_fcst,plt_obs,date_before,cycle)
+
+plt_fcst,plt_obs = set_plots(date_after,pol_hour,pol_name)
+stats = plot_dist(plt_fcst,plt_obs,date_after,cycle)
+```
+
+Plotting for cycle 23, day before and day after.
+
+```{python}
+pol_hour="fyn_23"
+cycle=pol_hour.split("_")[1]
+plt_fcst,plt_obs = set_plots(date_before,pol_hour,pol_name)
+stats=plot_dist(plt_fcst,plt_obs,date_before,cycle)
+
+plt_fcst,plt_obs = set_plots(date_after,pol_hour,pol_name)
+stats=plot_dist(plt_fcst,plt_obs,date_after,cycle)
+```
+
+Plotting for cycle 01, day before and day after.
+```{python}
+pol_hour="fyn_01"
+cycle=pol_hour.split("_")[1]
+plt_fcst,plt_obs = set_plots(date_before,pol_hour,pol_name)
+stats=plot_dist(plt_fcst,plt_obs,date_before,cycle)
+
+plt_fcst,plt_obs = set_plots(date_after,pol_hour,pol_name)
+stats=plot_dist(plt_fcst,plt_obs,date_after,cycle)
+```
+
+Plotting for cycle 02, day before and day after.
+```{python}
+pol_hour="fyn_02"
+cycle=pol_hour.split("_")[1]
+plt_fcst,plt_obs = set_plots(date_before,pol_hour,pol_name)
+stats=plot_dist(plt_fcst,plt_obs,date_before,cycle)
+
+plt_fcst,plt_obs = set_plots(date_after,pol_hour,pol_name)
+stats=plot_dist(plt_fcst,plt_obs,date_after,cycle)
+```
+
+Plotting for cycle 03, day before and day after.
+```{python}
+pol_hour="fyn_03"
+cycle=pol_hour.split("_")[1]
+plt_fcst,plt_obs = set_plots(date_before,pol_hour,pol_name)
+stats=plot_dist(plt_fcst,plt_obs,date_before,cycle)
+
+plt_fcst,plt_obs = set_plots(date_after,pol_hour,pol_name)
+stats=plot_dist(plt_fcst,plt_obs,date_after,cycle)
+```
+
+#```{python}
+#fig = plt.figure(figsize=(10,6))
+#plt.plot([1,2,3,4,5,6],stds)
+#
+#```

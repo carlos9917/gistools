@@ -1,0 +1,201 @@
+---
+title: "New road stations evaluation"
+format: html
+author: "Carlos Peralta"
+date: "23 June 2023"
+jupyter: python3
+
+---
+
+## Motivation
+
+This document presents a preliminary exploratory data analysis
+of the effect of the new road stations on the performance of the *glatmodel*.
+Initially we focus only on displaying the distribution of the
+stations in time.
+
+## Procedure
+
+Observational and forecast data for road temperature (TROAD) is stored in sqlite tables generated
+for the harp package.
+There are currently 993 stations in the database.
+
+
+First we have a brief look at the stations, using a shape file
+generated previously (zoom in to see the map).
+
+```{python}
+import warnings
+warnings.filterwarnings('ignore')
+import os
+
+import geopandas as gpd
+import folium as fl
+# danish data: https://github.com/ok-dk/dagi
+import pandas as pd
+
+stations_vv = gpd.read_file("data/vejvejr_stations_ll.shp")
+stations_vv.head(10)
+m = fl.Map(zoom_start=100, layers_control=True, tiles="OpenStreetMap")
+for _, r in stations_vv.iterrows():
+    sim_geo = gpd.GeoSeries(r["geometry"]).simplify(tolerance=0.001)
+    geo_j = sim_geo.to_json()
+    geo_j = fl.GeoJson(data=geo_j, style_function=lambda x: {"fillColor": "orange"})
+    geo_j.add_to(m)
+m    
+```
+
+load domain that includes north jutland's tip, which I selected using leafmap before
+```{python}
+
+df_njl = gpd.read_file("data/DK/nordjylland.shp") # this one is the whole thing
+df_njl = gpd.read_file("nordjylland.geojson")
+stations_vv.crs = {'init': 'EPSG:4326'}
+points_njl = gpd.sjoin(stations_vv, df_njl, op = 'within')
+points_njl
+```
+After selecting all stations falling inside the North Jutland domain we are left only with the stations shown below (zoom in
+to map).
+
+```{python}
+
+m = fl.Map(zoom_start=100, layers_control=True, tiles="OpenStreetMap")
+for _, r in points_njl.iterrows():
+    sim_geo = gpd.GeoSeries(r["geometry"]).simplify(tolerance=0.001)
+    geo_j = sim_geo.to_json()
+    geo_j = fl.GeoJson(data=geo_j, style_function=lambda x: {"fillColor": "orange"})
+    #fl.Popup(r["KOMNAVN"]).add_to(geo_j)
+    geo_j.add_to(m)
+m    
+```
+
+Now checking the whole data set. Reading the stations database, observational data
+and forecast data.
+
+```{python}
+# read the data with the lat lon information
+import sqlite3
+import pandas as pd
+dbase="data/stations_coords_height.db"
+con=sqlite3.connect(dbase)
+com="SELECT * FROM roadstations"
+df_stations = pd.read_sql(com,con)
+con.close()
+
+# read the observational data
+OBS="/home/cap/Downloads/OBSTABLE_TROAD_2023.sqlite"
+
+com="SELECT * FROM SYNOP"
+con=sqlite3.connect(OBS)
+df_obs = pd.read_sql(com,con)
+con.close()
+
+# read the forecast data from hour 00
+FCST="/home/cap/Downloads/FCTABLE_TROAD_202301_00.sqlite"
+
+com="SELECT * FROM FC"
+con=sqlite3.connect(FCST)
+df_fcst = pd.read_sql(com,con)
+con.close()
+```
+Now for convenience we add some extra geo data to the observational data set, making it
+geopandas dataframe. This way we can select data over a specific domain.
+
+```{python}
+
+gdf_obs = gpd.GeoDataFrame(
+    df_obs, geometry=gpd.points_from_xy(df_obs.lon, df_obs.lat), crs="EPSG:4326"
+)
+
+selected_obs = gpd.sjoin(gdf_obs, df_njl, op = 'within')
+unique_ID=selected_obs['SID'].unique()
+
+```
+
+Now we can do the same for the forecast data, but just using the list of stations from the previous step.
+```{python}
+
+selected_fcst =df_fcst[df_fcst["SID"].isin(unique_ID)]
+```
+
+Some datetime tasks below, to select specific periods. The index list will allow me to select specific hours.
+
+selecting specific months
+```{python}
+
+from datetime import datetime
+beg_month = datetime(2023,1,1)
+end_month = datetime(2023,1,31)
+
+selected_obs["datetime"]=pd.to_datetime(selected_obs["validdate"],unit="s")
+selected_fcst["datetime"] = pd.to_datetime(df_fcst["validdate"],unit="s")
+```
+
+Checking around noon
+```{python}
+jan_obs = selected_obs[(selected_obs["datetime"] >= beg_month) & (selected_obs["datetime"] <= end_month)]
+index = pd.DatetimeIndex(jan_obs['datetime'])
+
+noon_obs=jan_obs.iloc[index.indexer_between_time('10:00','14:00')]
+noon_obs["TROAD"].plot.hist()
+noon_obs[["SID","datetime"]].head(20)
+```
+Now do the same for forecasts
+```{python}
+
+jan_fcst = selected_fcst[(selected_fcst["datetime"] >= beg_month) & (selected_fcst["datetime"] <= end_month)]
+index = pd.DatetimeIndex(jan_fcst['datetime'])
+
+noon_fcst=jan_fcst.iloc[index.indexer_between_time('10:00','14:00')]
+```
+Plot both distributions for the same period
+
+```{python}
+from matplotlib import pyplot as plt
+noon_obs["TROAD"].plot.density(legend="obs")#hist(alpha=0.5)
+noon_fcst["glatmodel_det"].plot.density(legend="fcst")#.hist()
+
+plt.show()
+```
+
+Another option: plot them by the hour
+```{python}
+hours1=[str(i).zfill(2)+":00" for i in [0,2,4,6,8]]
+hours2=[str(i).zfill(2)+":00" for i in [1,3,5,7,9]]
+
+fcst_by_hour=[jan_fcst.iloc[index.indexer_between_time(h1,h2)] for h1,h2 in zip(hours1,hours2)]
+fcst_by_hour[0][["datetime","glatmodel_det"]].head(10)
+```
+Just to have a look at the data
+
+```{python}
+
+legends=[]
+for k,fc in enumerate(fcst_by_hour):
+    h1=hours1[k]
+    h2=hours2[k]
+    legends.append(h1+"-"+h2)
+    fc["glatmodel_det"].plot.density()
+plt.legend(legends)
+plt.show()   
+
+
+```
+
+Now try the same with the observations
+```{python}
+index = pd.DatetimeIndex(jan_obs['datetime'])
+obs_by_hour=[jan_obs.iloc[index.indexer_between_time(h1,h2)] for h1,h2 in zip(hours1,hours2)]
+legends=[]
+for k,ob in enumerate(obs_by_hour):
+    h1=hours1[k]
+    h2=hours2[k]
+    legends.append(h1+"-"+h2)
+    ob["TROAD"].plot.density()
+plt.legend(legends)
+plt.show()   
+
+```
+
+# Reading the clouds data so I get a feeling of the days which are cloudless
+
