@@ -6,9 +6,10 @@ format:
     page-layout: full
 author: "Carlos Peralta"
 date: "25 July 2023"
+date-modified: last-modified
+lang: en
 jupyter: python3
 resource-path: ["/home/cap/Downloads/ROAD_MODEL_DATA"]
-
 ---
 
 ## Introduction
@@ -38,6 +39,7 @@ from collections import OrderedDict
 from datetime import datetime
 from rich import print
 from matplotlib import pyplot as plt
+import numpy as np
 ```
 
 Read different polygons to use them later to select stations from the forecast and observations
@@ -62,6 +64,7 @@ for the indicated month and year.
 cycles= [str(i).zfill(2) for i in range(25)]
 cycles=["21","22","23","01","02","03"]
 DATA="/home/cap/Downloads/ROAD_MODEL_DATA"
+model = "glatmodel"
 ```
 Helper function to read the data from the sqlite files
 generated for harp.
@@ -90,9 +93,13 @@ YYYY="2022"
 MM="03"
 fcst_data=OrderedDict()
 for cycle in cycles:
-    fname=os.path.join(DATA,"FCTABLE_DATA",f"FCTABLE_TROAD_{YYYY}{MM}_{cycle}.sqlite")
-    print(f"Reading {fname}")
-    fcst_data[cycle] = read_sqlite(fname,"FC")
+    fname=os.path.join(DATA,"FCTABLE_DATA",model,f"FCTABLE_TROAD_{YYYY}{MM}_{cycle}.sqlite")
+    if os.path.isfile(fname):
+        print(f"Reading {fname}")
+        fcst_data[cycle] = read_sqlite(fname,"FC")
+    else:
+        print(f"ERROR: {fname} does not exist!")
+        sys.exit(1)
     
 obs_data = read_sqlite(os.path.join(DATA,f"OBSTABLE_TROAD_{YYYY}.sqlite"),"SYNOP")
 ```
@@ -109,6 +116,8 @@ for key in stations.keys():
     obs_sel[key] = obs_data[obs_data["SID_partial"].isin(st_group)]
     for cycle in cycles:
         fcst_sel[key+"_"+cycle] = fcst_data[cycle][fcst_data[cycle]["SID_partial"].isin(st_group)]
+        if len(fcst_sel[key+"_"+cycle]) == 0:
+            print(f"No stations found in {key} list")
 
 ```
 
@@ -129,7 +138,7 @@ Select the forecast data for the given date and the first 6 hours of the the for
 We check first the day before the increase in station data: 20220302
 
 ```{python}
-sel_date = datetime(2022,3,2)
+sel_date = datetime(2022,3,2,21)
 pol_hour = "fyn_21"
 plt_fcst = OrderedDict()
 for leadtime in range(1,7):
@@ -157,7 +166,7 @@ for leadtime in range(1,7):
 Plot them one after the other, for each leadtime together with the observations.
 
 ```{python}
-date_str = datetime.strftime(datetime(2022,3,2),"%Y-%m-%d")
+date_str = datetime.strftime(datetime(2022,3,2,21),"%Y-%m-%d")
 stds=[] 
 means=[]
 fig = plt.figure(layout="constrained",figsize=(10,6))
@@ -167,6 +176,8 @@ ax_dict=fig.subplot_mosaic(mosaic)
 for key in plt_fcst.keys():
     stds.append(plt_fcst[key]["glatmodel_det"].std())
     means.append(plt_fcst[key]["glatmodel_det"].mean())
+    if len(plt_fcst[key]["glatmodel_det"]) == 0:
+        print(f"There is no data in {key}")
     p1=plt_fcst[key]["glatmodel_det"].plot.density(legend=key,ax = ax_dict[str(key)])#.subplot_mosaic()
     plt_obs[key]["TROAD"].plot.density(legend=key,ax = ax_dict[str(key)])
     p1.legend([f"hour {key}", "obs"])    
@@ -175,7 +186,7 @@ for key in plt_fcst.keys():
 
 Now we check first the day when the data increased: 20220303, same cycle
 ```{python}
-sel_date = datetime(2022,3,3)
+sel_date = datetime(2022,3,3,21)
 pol_hour = "fyn_21"
 plt_fcst = OrderedDict()
 for leadtime in range(1,7):
@@ -194,12 +205,14 @@ stds=[]
 means=[]
 fig = plt.figure(layout="constrained",figsize=(10,6))
 date_str = datetime.strftime(sel_date,"%Y-%m-%d")
-fig.suptitle('Evolution of the distribution of forecast observations on {date_str} for cycle 21', fontsize=16)
+fig.suptitle(f'Evolution of the distribution of forecast observations on {date_str} for cycle 21', fontsize=16)
 mosaic=[["1","2","3"],["4","5","6"]]
 ax_dict=fig.subplot_mosaic(mosaic)
 for key in plt_fcst.keys():
     stds.append(plt_fcst[key]["glatmodel_det"].std())
     means.append(plt_fcst[key]["glatmodel_det"].mean())
+    if len(plt_fcst[key]["glatmodel_det"]) == 0:
+        print(f"There is no data in {key}")
     p1=plt_fcst[key]["glatmodel_det"].plot.density(legend=key,ax = ax_dict[str(key)])#.subplot_mosaic()
     plt_obs[key]["TROAD"].plot.density(legend=key,ax = ax_dict[str(key)])
     p1.legend([f"hour {key}", "obs"])    
@@ -214,10 +227,15 @@ def set_plots(sel_date,pol_hour,pol_name):
     plt_fcst = OrderedDict()
     for leadtime in range(1,7):
         plt_fcst[leadtime] = fcst_sel[pol_hour][(fcst_sel[pol_hour]["fcstdatetime"] == sel_date)&(fcst_sel[pol_hour]["leadtime"] == leadtime)]
+        if len(plt_fcst[leadtime]) == 0:
+            print(f"Nothing in dataframe for {leadtime}")
+            print(fcst_sel[pol_hour])
     plt_obs = OrderedDict()
     for leadtime in range(1,7):
          sel_dates = plt_fcst[leadtime]["datetime"].to_list()
          plt_obs[leadtime] = obs_sel[pol_name][obs_sel[pol_name]["datetime"].isin(sel_dates)]
+         if len(plt_obs[leadtime]) == 0:
+                print(f"No data in {leadtime}")
     return plt_fcst,plt_obs
 
 def plot_dist(plt_fcst,plt_obs,sel_date,cycle):
@@ -236,13 +254,58 @@ def plot_dist(plt_fcst,plt_obs,sel_date,cycle):
         p1.legend([f"hour {key}", "obs"])    
     stats=pd.DataFrame({"leadtime":[1,2,3,4,5,6],"std":stds,"mean":means})
     return stats
+
+def plot_cum_dist(plt_fcst,plt_obs,sel_date,cycle):
+    fig = plt.figure(layout="constrained",figsize=(10,6))
+    date_str = datetime.strftime(sel_date,"%Y-%m-%d")
+    fig.suptitle(f'Evolution of the CDFs on {date_str} for cycle {cycle}', fontsize=16)
+    mosaic=[["1","2","3"],["4","5","6"]]
+    ax_dict=fig.subplot_mosaic(mosaic)
+    nbins=20
+    print(ax_dict.keys())
+    for key in plt_fcst.keys():
+        counts = pd.cut(plt_obs[key]["TROAD"],nbins).value_counts().sort_index()
+        counts_obs = counts.values
+        s_cut, bins_obs = pd.cut(plt_obs[key]["TROAD"], nbins, retbins=True)
+
+        counts = pd.cut(plt_fcst[key]["glatmodel_det"],nbins).value_counts().sort_index()
+        s_cut, bins_fcst = pd.cut(plt_fcst[key]["glatmodel_det"], nbins, retbins=True)
+        counts_fcst = counts.values
+
+        #print(counts_fcst)
+        #print(bins_fcst)
+        pdf_fcst = counts_fcst/np.sum(counts_fcst)
+        cdf_fcst = np.cumsum(pdf_fcst)
+        #print(pdf_fcst)
+        #print(cdf_fcst)
+        pdf_obs = counts_obs/np.sum(counts_obs)
+        cdf_obs = np.cumsum(pdf_obs)
+        #ax_dict[str(key)].plot(bins_fcst[1:],pdf_fcst,color="red",label="PDF forecast")
+        ax_dict[str(key)].plot(bins_fcst[1:],cdf_fcst,color="red",label="CDF forecast")
+        ax_dict[str(key)].plot(bins_obs[1:],cdf_obs,color="blue",label="CDF observations")
+        ax_dict[str(key)].legend([f"forecast {key}", "obs"])    
+        #this one calculates the KS test to determine if both distributions
+        #are similar
+        from scipy import stats
+        D, p_value = stats.ks_2samp(cdf_fcst,cdf_obs)
+        print(f"KS test for checking if distributions are differend. D={D}, p_value ={p_value} (only similar if p_value > 0.05)")
+        #can also use numpy
+        #counts,division = np.histogram(plt_obs[key]["TROAD"])
+        #counts,division = np.histogram(plt_fcst[key]["glatmodel_det"])
+        #cdf_obs = np.cumsum(plt_obs[key]["TROAD"].hist())
+        #cdf_fcst = np.cumsum(plt_fcst[key]["glatmodel_det"].hist())
+        #plt.plot(cdf_fcst)
+        #plt.plot(cfd_obs)
+        #p1=plt_fcst[key]["glatmodel_det"].plot.density(legend=key,ax = ax_dict[str(key)])#.subplot_mosaic()
+    #stats=pd.DataFrame({"leadtime":[1,2,3,4,5,6],"std":stds,"mean":means})
+    #return stats
 ```
 
 Selecting all the other cycles
 
 ```{python}
-date_before=datetime(2022,3,2)
-date_after=datetime(2022,3,3)
+date_before=datetime(2022,3,2,22)
+date_after=datetime(2022,3,3,22)
 pol_name="fyn"
 ```
 Plotting for cycle 22, day before and day after.
@@ -256,11 +319,14 @@ stats = plot_dist(plt_fcst,plt_obs,date_before,cycle)
 
 plt_fcst,plt_obs = set_plots(date_after,pol_hour,pol_name)
 stats = plot_dist(plt_fcst,plt_obs,date_after,cycle)
+plot_cum_dist(plt_fcst,plt_obs,date_after,cycle)
 ```
 
 Plotting for cycle 23, day before and day after.
 
 ```{python}
+date_before=datetime(2022,3,2,23)
+date_after=datetime(2022,3,3,23)
 pol_hour="fyn_23"
 cycle=pol_hour.split("_")[1]
 plt_fcst,plt_obs = set_plots(date_before,pol_hour,pol_name)
@@ -272,6 +338,8 @@ stats=plot_dist(plt_fcst,plt_obs,date_after,cycle)
 
 Plotting for cycle 01, day before and day after.
 ```{python}
+date_before=datetime(2022,3,2,1)
+date_after=datetime(2022,3,3,1)
 pol_hour="fyn_01"
 cycle=pol_hour.split("_")[1]
 plt_fcst,plt_obs = set_plots(date_before,pol_hour,pol_name)
@@ -283,6 +351,8 @@ stats=plot_dist(plt_fcst,plt_obs,date_after,cycle)
 
 Plotting for cycle 02, day before and day after.
 ```{python}
+date_before=datetime(2022,3,2,2)
+date_after=datetime(2022,3,3,2)
 pol_hour="fyn_02"
 cycle=pol_hour.split("_")[1]
 plt_fcst,plt_obs = set_plots(date_before,pol_hour,pol_name)
@@ -294,6 +364,8 @@ stats=plot_dist(plt_fcst,plt_obs,date_after,cycle)
 
 Plotting for cycle 03, day before and day after.
 ```{python}
+date_before=datetime(2022,3,2,3)
+date_after=datetime(2022,3,3,3)
 pol_hour="fyn_03"
 cycle=pol_hour.split("_")[1]
 plt_fcst,plt_obs = set_plots(date_before,pol_hour,pol_name)
