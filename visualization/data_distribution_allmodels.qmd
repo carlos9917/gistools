@@ -40,6 +40,10 @@ from datetime import datetime
 from rich import print
 from matplotlib import pyplot as plt
 import numpy as np
+from rich.table import Table
+from rich.console import Console
+
+console=Console()
 ```
 
 Read different polygons to use them later to select stations from the forecast and observations
@@ -163,7 +167,7 @@ for leadtime in range(1,hours_fcst):
 The data is selected separately for each leadtime:
 ```{python}
 sum=plt_fcst_glat[1][["fcstdatetime","leadtime","glatmodel_det"]].to_string(index=False)
-print(sum)
+#print(sum)
 #sum=plt_fcst[2][["fcstdatetime","leadtime","glatmodel_det"]].to_string(index=False)
 #print(sum)
 ```
@@ -239,7 +243,7 @@ for key in plt_fcst_R01.keys():
 #print(stats[["leadtime","mean","std"]])
 ```
 
-Creating a function to repeat this process:
+Creating a few functions to repeat this process:
 ```{python}
 def set_plot_fcst(sel_date,pol_hour,pol_name,fcst_sel):
     plt_fcst = OrderedDict()
@@ -259,24 +263,91 @@ def set_plot_obs(sel_date,pol_hour,pol_name,plt_fcst):
                 print(f"No data in {leadtime}")
     return plt_obs
 
-def plot_dist(plt_fcst,plt_obs,sel_date,cycle,model):
-    stds=[] 
-    means=[]
+def plot_dist(plt_fcst_glat,plt_fcst_R01,plt_obs,sel_date,cycle):
+    stds_R01=[];stds_glat=[]
+    means_R01=[];means_glat=[]
     fig = plt.figure(layout="constrained",figsize=(10,6))
     date_str = datetime.strftime(sel_date,"%Y-%m-%d")
     fig.suptitle(f'Evolution of the distribution of forecast observations on {date_str} for cycle {cycle}', fontsize=16)
     mosaic=[["1","2","3"],["4","5","6"]]
     ax_dict=fig.subplot_mosaic(mosaic)
-    for key in plt_fcst.keys():
-        stds.append(plt_fcst[key][model+"_det"].std())
-        means.append(plt_fcst[key][model+"_det"].mean())
-        p1=plt_fcst[key][model+"_det"].plot.density(legend=key,ax = ax_dict[str(key)])#.subplot_mosaic()
+    for key in plt_fcst_R01.keys():
+        stds_R01.append(plt_fcst_R01[key]["R01_det"].std())
+        means_R01.append(plt_fcst_R01[key]["R01_det"].mean())
+        stds_glat.append(plt_fcst_glat[key]["glatmodel_det"].std())
+        means_glat.append(plt_fcst_glat[key]["glatmodel_det"].mean())
+        p1=plt_fcst_glat[key]["glatmodel_det"].plot.density(legend=key,ax = ax_dict[str(key)])#.subplot_mosaic()
+        plt_fcst_R01[key]["R01_det"].plot.density(legend=key,ax = ax_dict[str(key)])#.subplot_mosaic()
         plt_obs[key]["TROAD"].plot.density(legend=key,ax = ax_dict[str(key)])
-        p1.legend([f"hour {key}", "obs"])    
-    hours = [key for key in plt_fcst.keys()]
+        p1.legend([f"hour {key} glat",f"hour {key} R01", "obs"])    
+    hours = [key for key in plt_fcst_R01.keys()]
     #stats=pd.DataFrame({"leadtime":[1,2,3,4,5,6],"std":stds,"mean":means})
-    stats=pd.DataFrame({"leadtime":hours,"std":stds,"mean":means})
+    stats=pd.DataFrame({"leadtime":hours,"std_R01":stds_R01,"mean_R01":means_R01,"std_glat":stds_glat,"mean_glat":means_glat})
     return stats
+def highlight_cells(val):
+    color = 'red' if val < 0.05 else ''
+    return 'background-color: {}'.format(color)
+def print_table(df,cycle):
+    table = Table(title="Summary of fcst/obs similarity. p_value > 0.05 means they are similar")
+    for col in ["cycle","hour","model","D","p_value"]:
+        table.add_column(col)
+    for _,rows in df.iterrows():
+        hour = rows["hour"]
+        model = rows["model"]
+        D= rows["D"]
+        p_value = rows["p_value"]
+        if p_value > 0.05:
+            table.add_row(cycle,str(hour),model,str(D),str(round(p_value,2)),style="on green")
+        else:
+            table.add_row(cycle,str(hour),model,str(D),str(round(p_value,2)),style="on red")
+    console.print(table)
+
+
+def calc_KS(plt_fcst_glat,plt_fcst_R01,plt_obs,cycle):
+    nbins=50
+    d_values=[];p_values=[];models=[];hours=[]
+    for key in plt_fcst_R01.keys():
+        counts = pd.cut(plt_obs[key]["TROAD"],nbins).value_counts().sort_index()
+        counts_obs = counts.values
+        s_cut, bins_obs = pd.cut(plt_obs[key]["TROAD"], nbins, retbins=True)
+        pdf_obs = counts_obs/np.sum(counts_obs)
+        cdf_obs = np.cumsum(pdf_obs)
+
+        counts = pd.cut(plt_fcst_R01[key]["R01_det"],nbins).value_counts().sort_index()
+        s_cut, bins_fcst = pd.cut(plt_fcst_R01[key]["R01_det"], nbins, retbins=True)
+        counts_fcst = counts.values
+        pdf_fcst = counts_fcst/np.sum(counts_fcst)
+        cdf_fcst_R01 = np.cumsum(pdf_fcst)
+
+        counts = pd.cut(plt_fcst_glat[key]["glatmodel_det"],nbins).value_counts().sort_index()
+        s_cut, bins_fcst = pd.cut(plt_fcst_glat[key]["glatmodel_det"], nbins, retbins=True)
+        counts_fcst = counts.values
+        pdf_fcst = counts_fcst/np.sum(counts_fcst)
+        cdf_fcst_glat = np.cumsum(pdf_fcst)
+
+        #this one calculates the KS test to determine if both distributions
+        #are similar
+        from scipy import stats
+        D, p_value = stats.ks_2samp(cdf_fcst_R01,cdf_obs)
+        d_values.append(D)
+        p_values.append(p_value)
+        models.append("R01")
+        hours.append(str(key).zfill(2))
+
+        D, p_value = stats.ks_2samp(cdf_fcst_glat,cdf_obs)
+        d_values.append(D)
+        p_values.append(p_value)
+        models.append("glat")
+        hours.append(str(key).zfill(2))
+    results = pd.DataFrame({"hour":hours,"model":models,"D":d_values,"p_value":p_values})
+    #print(results.style.applymap(highlight_cells))
+    #results = pd.DataFrame({"D":d_values,"p_value":p_values})
+    #print(f"KS test for R01/obs and glat/obs")
+    #print("fcst and obs distributions are similar if p_value > 0.05")
+    #print(results.to_markdown(index=False))
+    print_table(results,cycle)
+    #print(f"KS for glat vs obs D={D}, p_value ={p_value}")
+    return results
 
 def plot_cum_dist(plt_fcst,plt_obs,sel_date,cycle,model):
     fig = plt.figure(layout="constrained",figsize=(10,6))
@@ -322,6 +393,7 @@ def plot_cum_dist(plt_fcst,plt_obs,sel_date,cycle,model):
         #p1=plt_fcst[key][model+"_det"].plot.density(legend=key,ax = ax_dict[str(key)])#.subplot_mosaic()
     #stats=pd.DataFrame({"leadtime":[1,2,3,4,5,6],"std":stds,"mean":means})
     #return stats
+results=calc_KS(plt_fcst_glat,plt_fcst_R01,plt_obs,"21")
 ```
 
 Selecting all the other cycles
@@ -330,6 +402,12 @@ Selecting all the other cycles
 date_before=datetime(2022,3,2,22)
 date_after=datetime(2022,3,3,22)
 pol_name="fyn"
+
+#create a table for later
+table = Table(title="Summary of distribution similarity")
+for col in ["cycle","hour","model","D","p_value"]:
+    table.add_column(col)
+
 ```
 Plotting for cycle 22, day before and day after.
 
@@ -340,16 +418,27 @@ cycle=pol_hour.split("_")[1]
 plt_fcst_R01 = set_plot_fcst(date_before,pol_hour,pol_name,fcst_sel_R01)
 plt_fcst_glat = set_plot_fcst(date_before,pol_hour,pol_name,fcst_sel_glat)
 plt_obs = set_plot_obs(date_before,pol_hour,pol_name,plt_fcst_R01)
-stats_R01 = plot_dist(plt_fcst_R01,plt_obs,date_before,cycle,"R01")
-stats_glat = plot_dist(plt_fcst_glat,plt_obs,date_before,cycle,"glatmodel")
+stats = plot_dist(plt_fcst_glat,plt_fcst_R01,plt_obs,date_before,cycle)
 
 plt_fcst_R01 = set_plot_fcst(date_after,pol_hour,pol_name,fcst_sel_R01)
 plt_fcst_glat = set_plot_fcst(date_after,pol_hour,pol_name,fcst_sel_glat)
 plt_obs = set_plot_obs(date_after,pol_hour,pol_name,plt_fcst_R01)
-stats_R01 = plot_dist(plt_fcst_R01,plt_obs,date_after,cycle,"R01")
-stats_glat = plot_dist(plt_fcst_glat,plt_obs,date_after,cycle,"glatmodel")
-plot_cum_dist(plt_fcst_R01,plt_obs,date_after,cycle,"R01")
-plot_cum_dist(plt_fcst_glat,plt_obs,date_after,cycle,"glatmodel")
+stats = plot_dist(plt_fcst_glat,plt_fcst_R01,plt_obs,date_after,cycle)
+results=calc_KS(plt_fcst_glat,plt_fcst_R01,plt_obs,"22")
+
+for _,rows in results.iterrows():
+    hour = rows["hour"]
+    model = rows["model"]
+    D= rows["D"]
+    p_value = rows["p_value"]
+    if p_value > 0.05:
+        table.add_row("22",str(hour),model,str(D),str(round(p_value,2)),style="on green")
+    else:
+        table.add_row("22",str(hour),model,str(D),str(round(p_value,2)),style="on red")
+
+
+#plot_cum_dist(plt_fcst_R01,plt_obs,date_after,cycle,"R01")
+#plot_cum_dist(plt_fcst_glat,plt_obs,date_after,cycle,"glatmodel")
 ```
 
 Plotting for cycle 23, day before and day after.
@@ -362,14 +451,22 @@ cycle=pol_hour.split("_")[1]
 plt_fcst_R01 = set_plot_fcst(date_before,pol_hour,pol_name,fcst_sel_R01)
 plt_fcst_glat = set_plot_fcst(date_before,pol_hour,pol_name,fcst_sel_glat)
 plt_obs = set_plot_obs(date_before,pol_hour,pol_name,plt_fcst_R01)
-stats_R01=plot_dist(plt_fcst_R01,plt_obs,date_before,cycle,"R01")
-stats_glat=plot_dist(plt_fcst_glat,plt_obs,date_before,cycle,"glatmodel")
+stats=plot_dist(plt_fcst_glat,plt_fcst_R01,plt_obs,date_before,cycle)
 
 plt_fcst_R01 = set_plot_fcst(date_after,pol_hour,pol_name,fcst_sel_R01)
 plt_fcst_glat = set_plot_fcst(date_after,pol_hour,pol_name,fcst_sel_glat)
 plt_obs = set_plot_obs(date_after,pol_hour,pol_name,plt_fcst_R01)
-stats_R01=plot_dist(plt_fcst_R01,plt_obs,date_after,cycle,"R01")
-stats_glat=plot_dist(plt_fcst_glat,plt_obs,date_after,cycle,"glatmodel")
+stats=plot_dist(plt_fcst_glat,plt_fcst_R01,plt_obs,date_after,cycle)
+results=calc_KS(plt_fcst_glat,plt_fcst_R01,plt_obs,"23")
+for _,rows in results.iterrows():
+    hour = rows["hour"]
+    model = rows["model"]
+    D= rows["D"]
+    p_value = rows["p_value"]
+    if p_value > 0.05:
+        table.add_row("23",str(hour),model,str(D),str(round(p_value,2)),style="on green")
+    else:
+        table.add_row("23",str(hour),model,str(D),str(round(p_value,2)),style="on red")
 ```
 
 Plotting for cycle 01, day before and day after.
@@ -381,14 +478,22 @@ cycle=pol_hour.split("_")[1]
 plt_fcst_R01 = set_plot_fcst(date_before,pol_hour,pol_name,fcst_sel_R01)
 plt_fcst_glat = set_plot_fcst(date_before,pol_hour,pol_name,fcst_sel_glat)
 plt_obs = set_plot_obs(date_before,pol_hour,pol_name,plt_fcst_R01)
-stats_R01=plot_dist(plt_fcst_R01,plt_obs,date_before,cycle,"R01")
-stats_glat=plot_dist(plt_fcst_glat,plt_obs,date_before,cycle,"glatmodel")
+stats=plot_dist(plt_fcst_glat,plt_fcst_R01,plt_obs,date_before,cycle)
 
 plt_fcst_R01 = set_plot_fcst(date_after,pol_hour,pol_name,fcst_sel_R01)
 plt_fcst_glat = set_plot_fcst(date_after,pol_hour,pol_name,fcst_sel_glat)
 plt_obs = set_plot_obs(date_after,pol_hour,pol_name,plt_fcst_R01)
-stats_R01=plot_dist(plt_fcst_R01,plt_obs,date_after,cycle,"R01")
-stats_glat=plot_dist(plt_fcst_glat,plt_obs,date_after,cycle,"glatmodel")
+stats=plot_dist(plt_fcst_glat,plt_fcst_R01,plt_obs,date_after,cycle)
+results=calc_KS(plt_fcst_glat,plt_fcst_R01,plt_obs,"01")
+for _,rows in results.iterrows():
+    hour = rows["hour"]
+    model = rows["model"]
+    D= rows["D"]
+    p_value = rows["p_value"]
+    if p_value > 0.05:
+        table.add_row("01",str(hour),model,str(D),str(round(p_value,2)),style="on green")
+    else:
+        table.add_row("01",str(hour),model,str(D),str(round(p_value,2)),style="on red")
 ```
 
 Plotting for cycle 02, day before and day after.
@@ -400,14 +505,22 @@ cycle=pol_hour.split("_")[1]
 plt_fcst_R01 = set_plot_fcst(date_before,pol_hour,pol_name,fcst_sel_R01)
 plt_fcst_glat = set_plot_fcst(date_before,pol_hour,pol_name,fcst_sel_glat)
 plt_obs = set_plot_obs(date_before,pol_hour,pol_name,plt_fcst_R01)
-stats_R01=plot_dist(plt_fcst_R01,plt_obs,date_before,cycle,"R01")
-stats_glat=plot_dist(plt_fcst_glat,plt_obs,date_before,cycle,"glatmodel")
+stats=plot_dist(plt_fcst_glat,plt_fcst_R01,plt_obs,date_before,cycle)
 
 plt_fcst_R01 = set_plot_fcst(date_after,pol_hour,pol_name,fcst_sel_R01)
 plt_fcst_glat = set_plot_fcst(date_after,pol_hour,pol_name,fcst_sel_glat)
 plt_obs = set_plot_obs(date_after,pol_hour,pol_name,plt_fcst_R01)
-stats_R01=plot_dist(plt_fcst_R01,plt_obs,date_after,cycle,"R01")
-stats_glat=plot_dist(plt_fcst_glat,plt_obs,date_after,cycle,"glatmodel")
+stats=plot_dist(plt_fcst_glat,plt_fcst_R01,plt_obs,date_after,cycle)
+results=calc_KS(plt_fcst_glat,plt_fcst_R01,plt_obs,"02")
+for _,rows in results.iterrows():
+    hour = rows["hour"]
+    model = rows["model"]
+    D= rows["D"]
+    p_value = rows["p_value"]
+    if p_value > 0.05:
+        table.add_row("02",str(hour),model,str(D),str(round(p_value,2)),style="on green")
+    else:
+        table.add_row("02",str(hour),model,str(D),str(round(p_value,2)),style="on red")
 ```
 
 Plotting for cycle 03, day before and day after.
@@ -419,18 +532,25 @@ cycle=pol_hour.split("_")[1]
 plt_fcst_R01 = set_plot_fcst(date_before,pol_hour,pol_name,fcst_sel_R01)
 plt_fcst_glat = set_plot_fcst(date_before,pol_hour,pol_name,fcst_sel_glat)
 plt_obs = set_plot_obs(date_before,pol_hour,pol_name,plt_fcst_R01)
-stats_R01=plot_dist(plt_fcst_R01,plt_obs,date_before,cycle,"R01")
-stats_glat=plot_dist(plt_fcst_glat,plt_obs,date_before,cycle,"glatmodel")
+stats=plot_dist(plt_fcst_glat,plt_fcst_R01,plt_obs,date_before,cycle)
 
 plt_fcst_R01 = set_plot_fcst(date_after,pol_hour,pol_name,fcst_sel_R01)
 plt_fcst_glat = set_plot_fcst(date_after,pol_hour,pol_name,fcst_sel_glat)
 plt_obs = set_plot_obs(date_after,pol_hour,pol_name,plt_fcst_R01)
-stats_R01=plot_dist(plt_fcst_R01,plt_obs,date_after,cycle,"R01")
-stats_glat=plot_dist(plt_fcst_glat,plt_obs,date_after,cycle,"glatmodel")
+stats=plot_dist(plt_fcst_glat,plt_fcst_R01,plt_obs,date_after,cycle)
+results=calc_KS(plt_fcst_glat,plt_fcst_R01,plt_obs,"03")
+for _,rows in results.iterrows():
+    hour = rows["hour"]
+    model = rows["model"]
+    D= rows["D"]
+    p_value = rows["p_value"]
+    if p_value > 0.05:
+        table.add_row("03",str(hour),model,str(D),str(round(p_value,2)),style="on green")
+    else:
+        table.add_row("03",str(hour),model,str(D),str(round(p_value,2)),style="on red")
 ```
+Print summary of the differences in distributions for all cycles.
 
-#```{python}
-#fig = plt.figure(figsize=(10,6))
-#plt.plot([1,2,3,4,5,6],stds)
-#
-#```
+```{python}
+console.print(table)
+```
