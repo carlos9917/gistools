@@ -19,8 +19,10 @@ new road stations to the already dense network of road stations in Denmark
 and how this affects the performance of the *glatmodel*.
 The focus of the analysis is on selecting a few key areas
 of the country where there has been a reasonably large increase in the number of stations (ie, at least 10 new stations).
+The distribution of the observations and forecasts for two models
+are compared and their similarity is quantified using a Kolmogorov-Smirnov (KS) test. Two models are considered: the road stretch model (R01), which does not make use of the new stations and the glatmodel, which does include all the observations from the new and old stations. This way we aim to determine the impact of the observations on the model performance. A more standard
 
-## Procedure
+## Data processing
 
 Observational and forecast data for road temperature (TROAD) is stored in sqlite tables generated
 for the harp package.
@@ -46,7 +48,7 @@ from rich.console import Console
 console=Console()
 ```
 
-Read different polygons to use them later to select stations from the forecast and observations
+We read different polygons to use them later to select stations from the forecast and observations
 ```{python}
 fyn_pol = gpd.read_file("polygons/around_fyn.geojson")
 nwz_pol = gpd.read_file("polygons/around_nw_zealand.geojson")
@@ -62,8 +64,7 @@ stations["mju"] = gpd.sjoin(all_stations,mju_pol,predicate="within")
 stations["nwz"] = gpd.sjoin(all_stations,nwz_pol,predicate="within")
 #model = "R01"
 ```
-We will be using the cycles below to read the forecast data from the road model
-for the indicated month and year.
+We will be using the cycles below to read the forecast data from the two road models (glatmodel and R01) for the indicated month and year.
 
 ```{python}
 cycles= [str(i).zfill(2) for i in range(25)]
