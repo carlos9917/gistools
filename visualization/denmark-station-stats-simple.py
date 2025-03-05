@@ -17,9 +17,9 @@ all_stations['creation_date'] = pd.to_datetime(all_stations['creation_date'].ast
 # Define regions based on latitude and longitude
 def assign_region(row):
     if row['lat'] > 56:
-        return 'North' if row['lon'] < 10 else 'East'
+        return 'NorthWest' if row['lon'] < 10 else 'NorthEast'
     else:
-        return 'West' if row['lon'] < 10 else 'South'
+        return 'SouthWest' if row['lon'] < 10 else 'SouthEast'
 
 all_stations['region'] = all_stations.apply(assign_region, axis=1)
 
